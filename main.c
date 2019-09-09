@@ -14,16 +14,14 @@
 #include <string.h>
 #include <unistd.h>
 #include "cmdline.h"
-#include "vfio.h"
 #include "revere_dev.h"
 #include "revere_hw.h"
+#include "platform.h"
 
 /* The i/o virtual address for our buffers, as seen from Revere.
- * This needs to be a multiple of 4KB. */
+ * This needs to be a multiple of 4KB.
+ * In this demo we do not allow a zero IOVA to help debug. */
 #define IOVA 0x42000
-
-// Polling timeout
-#define POLL_MS	100
 
 // Round up to the next multiple of 4KB
 static size_t round_to_pgsize(size_t size)
@@ -42,6 +40,7 @@ static void *allocate_buffers(size_t size)
 	if (!p)
 		err(1, "mmap failed");
 
+	memset(p, 0xde, size);
 	return p;
 }
 
@@ -55,107 +54,113 @@ static void free_buffers(void *p, size_t size)
 int main(int argc, char *argv[])
 {
 	size_t size;
-	struct vfio v;
 	struct cmdline cl;
-	struct revere_dev rd = {
-		.iova = IOVA,
-	};
+	struct revere_dev rd;
 	uint8_t pci_command;
 	int i;
-	void *ami0;
 	uint64_t write_index_tx0, read_index_rx0;
+	unsigned slot_doublewords;
+	struct platform plat;
+	struct revere_buffers *bufs;
 
 	parse_cmdline(&cl, argc, argv);
+	slot_doublewords = 1 << cl.log2_msg_length;
 
 	// Allocate our i/o buffers
 	size = round_to_pgsize(sizeof(struct revere_buffers));
-	rd.bufs = allocate_buffers(size);
+	bufs = allocate_buffers(size);
 
-	/* Open the device with VFIO and map memory into Revere IOVA space
+	/* Setup the platform.
+	 * With VFIO, open the device and map memory into Revere IOVA space
 	 * Also, map BAR0 into our process address space and turn on BME. */
-	vfio_setup(&v, cl.opt_vfio_group, cl.opt_device);
-	vfio_map_dma(&v, rd.bufs, size, rd.iova);
-	rd.regs = vfio_map_bar0(&v);
-	pci_command = vfio_read_config(&v, PCI_COMMAND);
-	vfio_write_config(&v, PCI_COMMAND, pci_command | PCI_COMMAND_MASTER);
+	setup(&plat, &cl);
+	map_dma(&plat, bufs, size, IOVA);
+	pci_command = read_config(&plat, PCI_COMMAND);
+	write_config(&plat, PCI_COMMAND, pci_command | PCI_COMMAND_MASTER);
 
 	/* Setup the Revere device.
 	 * This will setup the management interface.
-	 * Then using the management interface, this will setup the AMI-HWs in
-	 * the accelerator, an AMI-SW and it will connect them with sessions */
-	revere_dev_setup(&rd);
+	 * Then using the management interface, this will setup an AMI-SW.
+	 * By default it will also setup AMI-HWs in the accelerator and connect
+	 * them with sessions. Otherwise when in loopback mode, only the AMI-SW
+	 * is setup and connected. */
+	revere_dev_setup(&rd, bufs, &plat, IOVA, &cl);
 
-	/* Exchange data with the inversion agent and verify that it has
-	 * been inverted */
-	ami0 = (void *)((uintptr_t)rd.regs + RVR_AMI_SW_PAGE_0_OFFSET);
-	write_index_tx0 = revere_readq(ami0, WRITE_INDEX_TX0);
-	read_index_rx0 = revere_readq(ami0, READ_INDEX_RX0);
+	/* Exchange some data through Revere messages. By default this is with
+	 * the inversion agent, and we verify that data has indeed been
+	 * inverted. In loopback mode there is no inversion. */
+	write_index_tx0 = readq(&plat, AMI_SW0 + WRITE_INDEX_TX0);
+	read_index_rx0 = readq(&plat, AMI_SW0 + READ_INDEX_RX0);
 
-	for (i = 0; i < 42; i++) {
-		uint64_t *p;
-		char *q;
+	for (i = 0; i < cl.packets; i++) {
+		uint8_t *q;
 		unsigned int slot;
-		int j, s;
+		int j;
 		uint64_t read_index_tx0, write_index_rx0;
 
 		printf("%d ", i);
 
 		// Check that Tx is empty
-		read_index_tx0 = revere_readq(ami0, READ_INDEX_TX0);
+		read_index_tx0 = readq(&plat, AMI_SW0 + READ_INDEX_TX0);
+
 		if (!ring_is_empty(read_index_tx0, write_index_tx0))
 			errx(1, "non empty tx");
 
 		// Enqueue data in the slot
 		slot = write_index_tx0 & RING_SLOTS_MASK;
-		p = &rd.bufs->tx[slot * RING_SLOT_DOUBLEWORDS];
-		memset(p, i, RING_SLOT_DOUBLEWORDS * sizeof(uint64_t));
+		q = (uint8_t *)&rd.bufs->tx[slot * slot_doublewords];
+
+		for (j = 0; j < (int)slot_doublewords * 8; j++)
+			q[j] = (i + j);
 
 		// Advance write index and notify Revere
 		write_index_tx0++;
-		revere_writeq(ami0, write_index_tx0, WRITE_INDEX_TX0);
+		writeq(&plat, write_index_tx0, AMI_SW0 + WRITE_INDEX_TX0);
 
 		// Wait for an Rx slot
-		for (j = 0; j < POLL_MS; j++) {
-			write_index_rx0 = revere_readq(ami0, WRITE_INDEX_RX0);
+		for (j = 0; j < cl.timeout; j++) {
+			write_index_rx0 = readq(&plat, AMI_SW0 +
+							WRITE_INDEX_RX0);
 
 			if (!ring_is_empty(read_index_rx0, write_index_rx0))
 				break;
 
-			s = usleep(1000);
-			if (s < 0)
-				err(1, "usleep: %d", s);
+			msleep(&plat);
 		}
 
-		if (j >= POLL_MS)
+		if (j >= cl.timeout)
 			errx(1, "rx timeout");
 
 		// Verify received data
 		slot = read_index_rx0 & RING_SLOTS_MASK;
-		q = (char *)&rd.bufs->rx[slot * RING_SLOT_DOUBLEWORDS];
+		q = (uint8_t *)&rd.bufs->rx[slot * slot_doublewords];
 
-		for (j = 0; j < (int)(RING_SLOT_DOUBLEWORDS * sizeof(uint64_t));
-			j++)
-		{
-			uint8_t inv = ~i;
+		for (j = 0; j < (int)slot_doublewords * 8; j++) {
+			uint8_t x = (i + j);
 
-			if (q[j] != inv) {
+			// We expect inverted data only in default mode
+			if (!cl.loopback)
+				x = ~x;
+
+			if (q[j] != x) {
 				errx(1, "unexpected data %d != %d at byte %d",
-					q[j], inv, j);
+					q[j], x, j);
 			}
 		}
 
 		// Notify Revere that we have dequeued the data
 		read_index_rx0++;
-		revere_writeq(ami0, read_index_rx0, READ_INDEX_RX0);
+		writeq(&plat, read_index_rx0, AMI_SW0 + READ_INDEX_RX0);
+		fflush(NULL);
 	}
 
 	printf("\n");
 
 	// Teardown everything and exit
 	revere_dev_teardown(&rd);
-	pci_command = vfio_read_config(&v, PCI_COMMAND);
-	vfio_write_config(&v, PCI_COMMAND, pci_command & ~PCI_COMMAND_MASTER);
-	vfio_teardown(&v);
+	pci_command = read_config(&plat, PCI_COMMAND);
+	write_config(&plat, PCI_COMMAND, pci_command & ~PCI_COMMAND_MASTER);
+	teardown(&plat);
 	free_buffers(rd.bufs, size);
 	printf("Done.\n");
 	return 0;

@@ -20,9 +20,9 @@
 #include <assert.h>
 #include <stdint.h>
 #include <unistd.h>
+#include "cmdline.h"
 
-void vfio_setup(struct vfio *v, const char *vfio_group_filename,
-		const char *device_name)
+void vfio_setup(struct vfio *v, const struct cmdline *cl)
 {
 	int s;
 	struct vfio_group_status group_status = {
@@ -36,8 +36,7 @@ void vfio_setup(struct vfio *v, const char *vfio_group_filename,
 	};
 
 	assert(v);
-	assert(vfio_group_filename);
-	assert(device_name);
+	assert(cl);
 
 	memset(v, 0, sizeof(*v));
 
@@ -53,9 +52,9 @@ void vfio_setup(struct vfio *v, const char *vfio_group_filename,
 		err(1, "Doesn't support the IOMMU driver we want");
 
 	/* Open the group */
-	v->group_fd = open(vfio_group_filename, O_RDWR);
+	v->group_fd = open(cl->vfio_group, O_RDWR);
 	if (v->group_fd == -1)
-		err(1, "open %s", vfio_group_filename);
+		err(1, "open %s", cl->vfio_group);
 
 	/* Test the group is viable and available */
 	s = ioctl(v->group_fd, VFIO_GROUP_GET_STATUS, &group_status);
@@ -86,7 +85,7 @@ void vfio_setup(struct vfio *v, const char *vfio_group_filename,
 
 	/* Get a file descriptor for the device */
 	v->device_fd = ioctl(v->group_fd, VFIO_GROUP_GET_DEVICE_FD,
-				device_name);
+				cl->device);
 	if (v->device_fd <= 0)
 		err(1, "get device fd: %d", v->device_fd);
 
@@ -136,6 +135,7 @@ void vfio_map_dma(struct vfio *v, void *bufs, size_t size, uint64_t iova)
 	assert(v);
 	assert(bufs);
 	assert(size);
+	assert(iova);
 
 	v->dma_map = (struct vfio_iommu_type1_dma_map){
 		.argsz = sizeof(v->dma_map),
@@ -157,6 +157,7 @@ void *vfio_map_bar0(struct vfio *v)
 	int s;
 
 	assert(v);
+	assert(!v->bar0);
 
 	v->bar0_region = (struct vfio_region_info){
 		.argsz = sizeof(v->bar0_region),
@@ -255,5 +256,7 @@ void vfio_teardown(struct vfio *v)
 	if (s)
 		warn("close container: %d", s);
 
+#ifndef NDEBUG
 	memset(v, 0, sizeof(*v));
+#endif
 }

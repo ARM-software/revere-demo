@@ -55,6 +55,7 @@ typedef uint64_t u64;
 #define LOG2_MSG_LENGTH_SHIFT RVR_MSK_CTRL_LOG2_MSG_LENGTH_SHIFT
 
 /* The following offsets are inside one AMI */
+#define AMI_SW0		RVR_AMI_SW_PAGE_0_OFFSET
 #define READ_INDEX_RX0	RVR_READ_INDEX_RX0_OFFSET
 #define READ_INDEX_TX0	RVR_READ_INDEX_TX0_OFFSET
 #define TX_DIGEST	RVR_TX_DIGEST_OFFSET
@@ -63,8 +64,5 @@ typedef uint64_t u64;
 #define RX_DIGEST_MASK	RVR_RX_DIGEST_MASK_OFFSET
 #define WRITE_INDEX_RX0	RVR_WRITE_INDEX_RX0_OFFSET
 #define WRITE_INDEX_TX0	RVR_WRITE_INDEX_TX0_OFFSET
-
-uint64_t revere_readq(void *regs, unsigned int offset);
-void revere_writeq(void *regs, uint64_t value, unsigned int offset);
 
 #endif /* REVERE_HW_H_INCLUDED */

@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <linux/vfio.h>
+#include "cmdline.h"
 
 struct vfio {
 	int container_fd;
@@ -21,9 +22,7 @@ struct vfio {
 	void *bar0;
 };
 
-void vfio_setup(struct vfio *v, const char *vfio_group_filename,
-		const char *device_name);
-
+void vfio_setup(struct vfio *v, const struct cmdline *cl);
 void vfio_map_dma(struct vfio *v, void *bufs, size_t size, uint64_t iova);
 void *vfio_map_bar0(struct vfio *v);
 uint8_t vfio_read_config(struct vfio *v, unsigned int off);

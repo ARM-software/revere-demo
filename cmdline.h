@@ -7,12 +7,23 @@
 #ifndef CMDLINE_H_INCLUDED
 #define CMDLINE_H_INCLUDED
 
+#include <stdbool.h>
+#include "config.h"
+
 struct cmdline {
-	char *opt_vfio_group;
-	char *opt_device;
+	bool loopback;
+	int aha;
+	int log2_msg_length;
+	int packets;
+	int rx_ami_hw;
+	int timeout;	// In ms.
+	int tx_ami_hw;
+#ifdef VFIO
+	char *device;
+	char *vfio_group;
+#endif
 };
 
-void usage(const char *argv0);
 void parse_cmdline(struct cmdline *cl, int argc, char *const argv[]);
 
 #endif // CMDLINE_H_INCLUDED
