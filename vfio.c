@@ -179,7 +179,7 @@ void *vfio_map_bar0(struct vfio *v)
 
 	v->bar0 = mmap(0, v->bar0_region.size, PROT_READ | PROT_WRITE,
 			MAP_SHARED, v->device_fd, v->bar0_region.offset);
-	if (!v->bar0)
+	if (v->bar0 == MAP_FAILED)
 		err(1, "mmap bar0 failed");
 
 	printf("BAR0 @%p, size: %lld, offset: %#llx\n", v->bar0,

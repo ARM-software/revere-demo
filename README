@@ -121,6 +121,23 @@ interface):
 Command line options allow to select different AMI-HWs in the accelerator for Tx
 and Rx, and change the AHA ID.
 
+In dma mode, the sw selects a different accelerator (called the DMA agent, AHA 3).
+It receives a revere message with this format:
+
+```
+struct DMAPacket {
+            uint64_t of_buf_stash_ctl;
+            uint64_t src;
+            uint64_t dst;
+            uint32_t len;
+            uint32_t rsvd0;
+            uint32_t invert;
+}
+```
+
+and copies len bytes from src to dst buffers, inverted if invert == 1.
+Finally the DMA agent sends a response message back to notify of the DMA completion.
+
 In loopback mode a single session is setup. No AMI-HW is setup and the inversion
 accelerator is bypassed. The data is received "as is" without inversion:
 

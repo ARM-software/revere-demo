@@ -1,11 +1,13 @@
+*.in
+*.log
 *.o
+*~
 /.deps/
+/Makefile
 /aclocal.m4
-/autoscan.log
+/autom4te.cache/
 /compile
 /config.h
-/config.h.in
-/config.log
 /config.status
 /configure
 /configure.scan
@@ -14,6 +16,3 @@
 /missing
 /revere-vfio-demo
 /stamp-h1
-Makefile
-Makefile.in
-autom4te.cache

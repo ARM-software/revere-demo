@@ -18,6 +18,7 @@ static const struct option long_options[] = {
 	{"help",		no_argument,		0, 'h'},
 	{"log2-msg-length",	required_argument,	0, 'L'},
 	{"loopback",		no_argument,		0, 'l'},
+	{"dma",         no_argument,    0, 'm'},
 	{"packets",		required_argument,	0, 'p'},
 	{"rx-ami-hw",		required_argument,	0, 'r'},
 	{"timeout",		required_argument,	0, 'T'},
@@ -36,6 +37,7 @@ static void print_opts(const struct cmdline *cl)
 	printf("  aha: %d, ami-hw rx: %d, tx: %d\n", cl->aha, cl->rx_ami_hw,
 		cl->tx_ami_hw);
 	printf("  loopback: %d\n", cl->loopback);
+	printf("  dma: %d\n", cl->dma);
 	printf("  log2-msg-length: %d (%d B)\n", cl->log2_msg_length,
 		8 << cl->log2_msg_length);
 	printf("  packets: %d\n", cl->packets);
@@ -83,6 +85,7 @@ static void compute_optstring(char *p, size_t s)
 			p[i++] = ':';
 	}
 
+	assert(i < s);
 	p[i] = '\0';
 }
 
@@ -92,7 +95,7 @@ static void compute_optstring(char *p, size_t s)
  */
 void parse_cmdline(struct cmdline *cl, int argc, char *const argv[])
 {
-	char optstring[64];
+	char optstring[128];
 
 	assert(cl);
 	assert(argc);
@@ -135,6 +138,7 @@ void parse_cmdline(struct cmdline *cl, int argc, char *const argv[])
 		case 'T': cl->timeout = atoi(optarg); break;
 		case 'a': cl->aha = atoi(optarg); break;
 		case 'l': cl->loopback = true; break;
+		case 'm': cl->dma = true; break;
 		case 'p': cl->packets = atoi(optarg); break;
 		case 'r': cl->rx_ami_hw = atoi(optarg); break;
 		case 't': cl->tx_ami_hw = atoi(optarg); break;

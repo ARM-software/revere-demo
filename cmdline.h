@@ -12,6 +12,7 @@
 
 struct cmdline {
 	bool loopback;
+	bool dma;
 	int aha;
 	int log2_msg_length;
 	int packets;
